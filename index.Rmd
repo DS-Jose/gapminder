@@ -1,0 +1,532 @@
+---
+title: 'Gapminder, Life Expectancy and Income'
+author: "by Jose Velazquez"
+output:
+  html_document:
+    theme: united
+    toc: yes
+    toc_float:
+      collapsed: no
+  pdf_document:
+    toc: yes
+---
+
+The following **packages** are used in this project:
+
+```{r setup, warning=FALSE, results='hide', message=FALSE}
+
+library(tidyverse) # For data wrangling
+library(readxl) # To import excel and csv files
+library(countrycode) # Assigns the names of the continents for each country
+library(readr) # Exports the dataframe
+library(ggthemes) # Additional themes for graphics
+library(plotly) # Creates interactive plots
+library(gganimate) # Creates animated plots
+library(gifski) # Creates a GIF animation
+
+```
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+## Introduction
+
+In this project, my goal is to recreate and visualize three single-year plots representing the years 1800, 1950, and 2018, as demonstrated in Hans Rosling's captivating video on global development. The video, titled "Gapminder, Hans Rosling's 200 Countries, 200 Years, 4 Minutes - The Joy of Stats," showcases the relationship between life expectancy and wealth across nations.
+
+By recreating these plots, I aim to gain insights into how life expectancy and wealth have evolved over time. The selected years of 1800, 1950, and 2018 provide us with a historical perspective and reflect the most recent available data for comprehensive analysis.
+
+-   Gapminder, [Hans Rosling's 200 Countries, 200 Years, 4 Minutes - The Joy of Stats - BBC Four](https://www.youtube.com/watch?v=jbkSRLYSojo/)
+
+![life expectancy and wealth, 2009](Hans_2009.JPG)
+
+Furthermore, I will utilize the [gganimate](https://gganimate.com/articles/gganimate.html) package to create an animated plot encompassing the past 50 years of data. This animated visualization will allow us to observe the changes in life expectancy and wealth trends over this period, emphasizing any notable patterns or shifts.
+
+Lastly, I will leverage the [plotly](https://plotly.com/r/) package to construct an interactive plot with the latest data from the year 2018. This interactive visualization will enable users to explore the data by interacting with various elements such as tooltips, zooming, and selecting specific countries of interest.
+
+Through this project, I aim to present the data in a visually compelling and engaging manner, providing a deeper understanding of the intricate relationship between life expectancy, wealth, and the progression of global development.
+
+You can find the GitHub repository at https://github.com/DS-Jose/gapminder 
+
+## Data Files
+
+The project utilizes the following data files, which have been downloaded from [Gapminder](https://www.gapminder.org/data/) and can be found in the "data" folder of this project:
+
+- Income: "data/income_per_person_gdppercapita_ppp_inflation_adjusted.csv"
+    - This file contains information about the income per person, adjusted for inflation and purchasing power parity (PPP).
+
+- Life Expectancy (years): "data/life_expectancy_years.csv"
+    - This file provides data on life expectancy in years, capturing the average lifespan of individuals across different countries.
+
+- Population: "data/population_total.csv"
+    - The population file includes data on the total population count for each country.
+
+Make sure to load and process these files in your code to obtain the necessary variables for creating the desired plots.
+
+### Importing Data
+
+Import the three CSV datasets for processing: income or GDP per capita, life expectancy, and population.
+
+```{r}
+
+# Importing the datasets and assigning shorter names
+
+# Use `check.names = FALSE` to prevent variable name changes after importing.
+
+inc <- read.csv("data/income_per_person_gdppercapita_ppp_inflation_adjusted.csv", check.names = FALSE)
+
+lif <- read.csv("data/life_expectancy_years.csv", check.names = FALSE)
+
+pop <- read.csv("data/population_total.csv", check.names = FALSE)
+
+```
+
+In these datasets, the continent names for each country are missing. To rectify this, we can obtain the continent names by importing an additional file that maps countries to continents or by utilizing the countrycode package.
+
+```{r}
+
+# Adding the continent to the life expectancy table using countrycode package
+# This step is performed to associate each country in the life expectancy table with its respective continent for further analysis.
+
+lif$continent <- countrycode(sourcevar = lif[, "country"],
+                            origin = "country.name",
+                            destination = "continent")
+
+```
+
+### Tidy Data
+
+The original datasets we have imported do not adhere to the principles of tidy data. Tidy data is a structured format that facilitates easier analysis and visualization by organizing data into consistent patterns. In the current state, our datasets have multiple columns representing different years, which violates the tidy data principles.
+
+To rectify this, we need to pivot longer all three tables to transform them into tidy format. Pivoting longer involves reshaping the data so that each year becomes a separate observation and the associated values are placed in a new column. By pivoting the data, we can effectively organize and utilize it for further analysis.
+
+```{r}
+
+# Pivot the datasets to transform them into tidy format
+
+life_expectancy_long <- lif %>%
+  # Pivot longer the columns, except for country and continent
+  pivot_longer(cols = c(-country, -continent),
+               # Create new variables: year and life_expectancy
+               names_to = "year",
+               values_to = "life_expectancy")
+
+income_long <- inc %>% 
+  pivot_longer(-country,
+               names_to = "year",
+               values_to = "income")
+
+population_long <- pop %>% 
+  pivot_longer(-country,
+               names_to = "year",
+               values_to = "population")
+
+```
+
+## Joins
+
+To ensure accuracy and consistency in our analysis, we need to consider the presence of projected data in the income and population datasets. These projections may introduce uncertainties and potentially skew our findings. To address this concern, we will rely on the life expectancy table, which provides the latest available data without any projections.
+
+By using the life expectancy table as our primary dataset, we can maintain the integrity of our analysis and avoid potential biases introduced by projected values. We will perform left joins to combine the income and population datasets with the life expectancy table, aligning the data based on country and year.
+
+```{r}
+
+# Using a left join to merge the income and population datasets with the life expectancy table
+
+# Joining the income_long dataset with the life_expectancy_long dataset based on country and year
+allcountries <- life_expectancy_long %>%
+  left_join(income_long, by = c("country", "year"))
+
+# Joining the population_long dataset with the existing allcountries dataset based on country and year
+allcountries <- allcountries %>%
+  left_join(population_long, by = c("country", "year"))
+
+# Checking the first few rows of the joined data
+head(allcountries)
+
+```
+
+### Exporting Data
+
+By exporting the clean dataset as a CSV file, named "clean_df.csv," you can conveniently store and utilize the cleaned data in subsequent analyses or share it with others. This step ensures that the progress made in importing and cleaning the data is preserved and easily accessible in the future.
+
+```{r}
+
+# Exporting the clean dataset as a CSV file for future use and manipulation
+write_csv(allcountries, "clean_df.csv")
+
+```
+
+## Plotting
+
+### Using ggplot
+
+For the static plots I decided to go with the years 1800, 1950 and 2018 to compare how the variables income and life expectancy changed over this years.
+
+```{r}
+
+# Assigning a name to the plot
+chart1 <- allcountries %>% 
+    # Filtering the data for the year 1800
+    filter(year %in% c("1800")) %>%
+    ggplot(aes(x = income, y = life_expectancy, colour = continent)) +
+    # Adding scatter plot points with population as size and transparency
+    geom_point(aes(size = population), alpha = .5) + 
+    # Setting limits and breaks for the y-axis
+    scale_y_continuous(limits = c(10, 95), breaks = c(25, 50, 75)) +
+    # Setting logarithmic scale for the x-axis
+    scale_x_log10(limits = c(400, 120000), breaks = c(400, 4000, 40000))
+# Displaying the plot for the year 1800
+chart1
+
+# Repeating the process for the years 1950 and 2018
+chart2 <- allcountries %>% 
+    filter(year %in% c("1950")) %>%
+    ggplot(aes(x = income, y = life_expectancy, colour = continent)) +
+    geom_point(aes(size = population), alpha = .5) + 
+    scale_y_continuous(limits = c(10, 95), breaks = c(25, 50, 75)) +
+    scale_x_log10(limits = c(400, 120000), breaks = c(400, 4000, 40000))
+# Displaying the plot for the year 1950
+chart2
+
+chart3 <- allcountries %>% 
+    filter(year %in% c("2018")) %>%
+    ggplot(aes(x = income, y = life_expectancy, colour = continent)) +
+    geom_point(aes(size = population), alpha = .5) + 
+    scale_y_continuous(limits = c(10, 95), breaks = c(25, 50, 75)) +
+    scale_x_log10(limits = c(400, 120000), breaks = c(400, 4000, 40000))
+# Displaying the plot for the year 2018
+chart3
+
+```
+
+### Finding Relevant Values
+
+Finding interesting data points to show in our plots, including maximum and minimum values for income and life expectancy.
+
+```{r}
+
+# For the year 1800
+# Extracting the country with the highest life expectancy in 1800
+allcountries %>% 
+  filter(year %in% c("1800")) %>%
+  slice_max(life_expectancy)
+
+# Extracting the country with the highest income in 1800
+allcountries %>% 
+  filter(year %in% c("1800")) %>%
+  slice_max(income)
+
+# For the year 1950
+# Extracting the country with the highest life expectancy in 1950
+allcountries %>% 
+  filter(year %in% c("1950")) %>%
+  slice_max(life_expectancy)
+
+# Extracting the country with the highest income in 1950
+allcountries %>% 
+  filter(year %in% c("1950")) %>%
+  slice_max(income)
+
+# Extracting the country with the lowest life expectancy in 1950
+allcountries %>% 
+  filter(year %in% c("1950")) %>%
+  slice_min(life_expectancy)
+
+# For the year 2018
+# Extracting the country with the highest life expectancy in 2018
+allcountries %>% 
+  filter(year %in% c("2018")) %>%
+  slice_max(life_expectancy)
+
+# Extracting the country with the lowest life expectancy in 2018
+allcountries %>% 
+  filter(year %in% c("2018")) %>%
+  slice_min(life_expectancy)
+
+```
+
+### Plots Formatting
+
+To make the plots more attractive, we need to use the right formatting. In the code below I am adding themes, changing colors, adding labels and reference lines.
+
+```{r}
+
+# Saving the final plots
+lifeexp1800 <- chart1 +
+# Adding labels to show information about the plot, like title, labels.
+  labs(title = "Income versus Life Expectancy in 1800",
+       x = "Income (GDP per capita in USD $)",
+       y = "Life expectancy (years)",
+       caption = "Source: Gapminder",
+       size = "Population (millions)",
+       color = "Continent") +
+# Setting the size of the bubbles with the same scale for the 3 plots
+  scale_size(
+      # The range is the size of the bubbles, higher would mean bigger difference between bubbles.
+       range = c(0.1, 15),
+      # The limits of population from NA to the highest which is China just under 1500 million.
+       limits = c(NA,1500000000), 
+      # Multiplying the population by millions so it would be easier to read.
+       breaks = 1000000 * c(10, 50, 100, 500, 1000, 1500),
+       labels = c("10", "50", "100", "500", "1000", "1500")) +
+# Changing the color palette
+  scale_colour_brewer(palette = "Set1") +
+# Changing the default theme
+  theme_classic() +
+# Using the override function to make the color label bigger
+  guides(color = guide_legend(override.aes = list(size = 5, alpha = .5))) +
+# Adding the vertical and horizontal lines to replicate Hans Rosling's plots
+  geom_vline(xintercept = c(400, 4000, 40000),
+             # Adding a light color, with small size and .5 transparency so it is not distracting.
+                color = "grey", size = .2, alpha = .5) +
+# Doing the same on the y axes.  
+  geom_hline(yintercept = c(25, 50, 75), 
+                color = "grey", size = .2, alpha = .5) +
+# Labeling the countries with the interesting points we found earlier.
+# The life_expectancy has a +5 to show the label higher on the y axes.
+  geom_text(aes(x = income, y = life_expectancy + 5, label = country),
+               color = "grey50",
+            # Filtering the data to show only the 2 countries we want.
+               data = filter(allcountries, year == 1800, country %in% c("Iceland", "Netherlands")))
+
+# Showing the result
+lifeexp1800
+
+# Repeating the same process for the next 2 plots.
+lifeexp1950 <- chart2 + 
+  labs(title = "Income versus Life Expectancy in 1950",
+       x = "Income (GDP per capita in USD $)",
+       y = "Life expectancy (years)",
+       caption = "Source: Gapminder",
+       size = "Population (millions)",
+       color = "Continent") +
+  scale_size(
+       range = c(0.1, 15),    
+       limits = c(NA,1500000000), 
+       breaks = 1000000 * c(10, 50, 100, 500, 1000, 1500),
+       labels = c("10", "50", "100", "500", "1000", "1500")) +
+  scale_colour_brewer(palette = "Set1") +  
+  theme_classic() +
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  geom_vline(xintercept = c(400, 4000, 40000), 
+                color = "grey", size = .2, alpha = .5) +
+  geom_hline(yintercept = c(25, 50, 75), 
+                color = "grey", size = .2, alpha = .5) +
+  geom_text(aes(x = income, y = life_expectancy + 5, label = country),
+            color = "grey50",
+            data = filter(allcountries, year == 1950, country %in% c("Norway", "Brunei", "Yemen")))
+
+lifeexp1950
+
+lifeexp2018 <- chart3 + 
+  labs(title = "Income versus Life Expectancy in 2018",
+       x = "Income (GDP per capita in USD $)",
+       y = "Life expectancy (years)",
+       caption = "Source: Gapminder",
+       size = "Population (millions)",
+       color = "Continent") +
+  scale_size(
+       range = c(0.1, 15),    
+       limits = c(NA,1500000000), 
+       breaks = 1000000 * c(10, 50, 100, 500, 1000, 1500),
+       labels = c("10", "50", "100", "500", "1000", "1500")) +
+  scale_colour_brewer(palette = "Set1") +
+  theme_classic() +
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  geom_vline(xintercept = c(400, 4000, 40000), 
+                color = "grey", size = .2, alpha = .5) +
+  geom_hline(yintercept = c(25, 50, 75), 
+                color = "grey", size = .2, alpha = .5) +
+  geom_text(aes(x = income, y = life_expectancy + 5, label = country),
+                color = "grey50",
+                data = filter(allcountries, year == 2018, country %in% c("Japan", "Lesotho")))
+
+lifeexp2018
+
+```
+
+### Exporting Plots as Image Files
+
+To share the plots, you can save them as image files using the ggsave() function from the ggplot2 package. The code snippet below demonstrates how to save the plots as JPEG image files:
+
+```{r}
+
+# Save the plot 'lifeexp1800' as a JPEG image file named "lifeexp1800.jpg"
+ggsave("lifeexp1800.jpg", lifeexp1800, width = 16, height = 9)
+
+# Save the plot 'lifeexp1950' as a JPEG image file named "lifeexp1950.jpg"
+ggsave("lifeexp1950.jpg", lifeexp1950, width = 16, height = 9)
+
+# Save the plot 'lifeexp2018' as a JPEG image file named "lifeexp2018.jpg"
+ggsave("lifeexp2018.jpg", lifeexp2018, width = 16, height = 9)
+
+```
+
+In the code snippet above, you need to specify the file name and the desired image extension (e.g., ".jpg"). The plot object to be saved is passed as the second argument (lifeexp1800, lifeexp1950, and lifeexp2018). You can also adjust the width and height parameters to specify the aspect ratio of the saved image.
+
+## Creating an Animated Data Visualization
+
+To recreate an animation similar to [Hans Rosling's video](https://www.youtube.com/watch?v=jbkSRLYSojo/) video, we can visualize the changes in life expectancy and income over the last 50 years.
+
+
+```{r}
+
+# Creating a separate dataset for the animation
+anim_data <- allcountries %>%
+  # Converting the 'year' variable to integer type
+  mutate(year = as.integer(year)) %>%
+  # Filtering the data to include only years from 1968 to 2018
+  filter(year %in% (1968:2018))
+
+# Creating the animated plot
+anim_output <- ggplot(anim_data, aes(income, life_expectancy, size = population, color = continent, frame = year)) +
+  # Setting the labels and captions for the plot
+  labs(x = "Income (GDP per capita in USD $)",
+       y = "Life Expectancy (years)",
+       caption = "Source: Gapminder",
+       size = "Population (millions)",
+       color = "Continent") +
+  # Setting the y-axis limits and breaks
+  scale_y_continuous(limits = c(10, 95), breaks = c(25, 50, 75)) +
+  # Setting the x-axis limits and breaks on a logarithmic scale
+  scale_x_log10(limits = c(400, 120000), breaks = c(400, 4000, 40000)) +
+  # Setting the color palette
+  scale_colour_brewer(palette = "Set1") +
+  # Applying the classic theme
+  theme_classic() +
+  # Adjusting the legend size
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  # Adding vertical lines
+  geom_vline(xintercept = c(400, 4000, 40000), color = "grey", size = 0.2, alpha = 0.5) +
+  # Adding horizontal lines
+  geom_hline(yintercept = c(25, 50, 75), color = "grey", size = 0.2, alpha = 0.5) +
+  # Adding points to represent the data
+  geom_point(aes(), alpha = 0.5) +
+  # Setting the size of the points
+  scale_size(range = c(0.1, 15),
+             limits = c(NA, 1500000000),
+             breaks = 1000000 * c(10, 50, 100, 500, 1000, 1500),
+             labels = c("10", "50", "100", "500", "1000", "1500")) +
+  # Adding the year as a title, which changes dynamically with the frames
+  ggtitle("Income versus Life Expectancy, year: {frame_time}") +
+  # Creating a smooth transition between frames
+  transition_time(year) +
+  # Setting the transition easing
+  ease_aes("linear") +
+  # Adding a fade effect for entering frames
+  enter_fade() +
+  # Adding a fade effect for exiting frames
+  exit_fade()
+
+# Creating the animation
+animate(anim_output, duration = 10, fps = 20, width = 800, height = 400, renderer = gifski_renderer())
+
+# Saving the animation as a GIF file
+anim_save("capstone_animation.gif")
+
+```
+
+## Interactive Data Visualization
+
+To showcase the advanced plotting capabilities in R, I have created an interactive visualization using Plotly. This interactive plot allows you to explore the data in a more engaging way. When you hover your mouse over each dot, you will see detailed information about each country, including population, life expectancy, and income. Additionally, you can zoom in and out, select specific data points, and even export the plot.
+
+```{r}
+
+# Filtering the data to use the latest year
+int_data <- allcountries %>% 
+  filter(year=="2018")
+
+# Interactive version, using mutate to create new variables to show in the tooltip
+interactive <- int_data %>%
+  # Mutating and rounding the income to 0 decimals
+  mutate(income = round(income, 0)) %>%
+  # Mutating and dividing the population by 1 million for easier reading
+  mutate(population = round(population / 1000000, 2)) %>%
+  # Mutating life expectancy and rounding to 1 decimal
+  mutate(life_expectancy = round(life_expectancy, 1)) %>%
+  # Reordering the countries
+  arrange(desc(population)) %>%
+  mutate(country = factor(country, country)) %>%
+  # Text for tooltip
+  mutate(text = paste("Country: ", country, "\nPopulation (M): ", population, "\nLife Expectancy: ", life_expectancy, "\nIncome: ", income, sep = "")) %>%
+  # Creating the plot
+  ggplot(aes(x = income, y = life_expectancy, size = population, color = continent, text = text)) +
+  geom_point(aes(size = population), alpha = .5) +
+  scale_y_continuous(
+    limits = c(50, 90),
+    breaks = c(50, 60, 70, 80, 90)
+  ) +
+  scale_x_log10(
+    limits = c(400, 120000),
+    breaks = c(400, 4000, 40000)
+  ) +
+  scale_colour_brewer(palette = "Set1") +
+  theme_classic() +
+  theme(legend.position = "none") +
+  labs(
+    title = "Income versus Life Expectancy in 2018",
+    x = "Income (GDP per capita in USD $)",
+    y = "Life Expectancy (years)",
+    caption = "Source: Gapminder"
+  )
+
+# Using plotly to make the plot interactive and show each country's information on mouseover
+int2018 <- ggplotly(interactive, tooltip = "text")
+
+int2018
+
+```
+
+This code generates an interactive plot using the latest available data for the year 2018. The plot displays the relationship between income and life expectancy for different countries. Each dot represents a country, and its size corresponds to the country's population. The color of the dot represents the continent to which the country belongs.
+
+## Correlation
+
+### Regression model
+
+To explore the relationship between income and life expectancy, we can use a regression model. In R, we can fit a linear regression model using the lm() method. Let's see how it works:
+
+```{r}
+
+# Fitting a regression model using lm()
+gapminder_model <- lm(income ~ life_expectancy, data = allcountries)
+
+gapminder_model
+
+```
+
+By running the above code, we create a linear regression model where income is the response variable and life expectancy is the predictor variable. The lm() function fits the model to our data from the "allcountries" dataset. The result is stored in the "gapminder_model" object.
+
+To understand the statistical properties of our model, we can obtain a summary:
+
+```{r}
+
+# Getting a summary of the regression model
+summary(gapminder_model)
+
+```
+
+The summary provides important information about the statistical properties of our model. It includes coefficients, standard errors, t-values, and p-values.
+
+Upon examining the summary, we can conclude that the model is statistically significant because it has a small p-value. However, the R-squared value of 0.33 indicates a weak correlation between income and life expectancy. This means that income alone explains only a small portion of the variation in life expectancy. It's important to note that there are likely other factors influencing life expectancy that are not included in our model.
+
+Based on this analysis, we cannot rely solely on this model to accurately predict life expectancy in the future. Nonetheless, it provides us with some insights into the relationship between income and life expectancy in the given dataset.
+
+## The End
+
+Thank you for reading until the very end, I hope you find this project useful. Special thanks to [Martin Monkman](https://martinmonkman.com/) for his great teachings in BIDA 302 Programming Fundamentals from the University of Victoria, BC.
+
+If you want to check my other projects please visit my portfolio website at https://ds-jose.github.io/
+
+
+### Resources
+
+-   <https://bookdown.org/martin_monkman/DataAnalyticsCodingFundamentals/gapminder200.html>
+
+-   <https://towardsdatascience.com/how-to-build-animated-charts-like-hans-rosling-doing-it-all-in-r-570efc6ba382>
+
+-   <https://gganimate.com/index.html>
+
+-   <https://www.datanovia.com/en/blog/gganimate-how-to-create-plots-with-beautiful-animation-in-r/>
+
+-   <https://www.r-graph-gallery.com/bubble-chart.html>
